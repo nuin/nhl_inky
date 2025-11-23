@@ -12,5 +12,8 @@ dependencies = [
 
 [project.optional-dependencies]
 rpi = [
-    "inky[rpi]>=1.5.0",
+    "inky>=1.5.0",
+    "spidev>=3.5",
+    "RPi.GPIO>=0.7.0",
+    "smbus2>=0.4.0",
 ]
