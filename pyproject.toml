@@ -12,3 +12,6 @@ dependencies = [
 rpi = [
     "inky==2.2.1",
 ]
+
+[tool.uv]
+exclude-newer = "2024-12-01T00:00:00Z"
