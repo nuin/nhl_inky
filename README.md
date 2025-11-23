@@ -100,9 +100,48 @@ The client will:
 - Update automatically every 2 minutes
 - Continue running until you press Ctrl+C
 
+### Inky Display Mode (Inky Impression 7.3")
+
+Display NHL scores on your Pimoroni Inky Impression 7.3" e-ink display:
+
+**With uv:**
+```bash
+uv run python nhl_inky_display.py
+```
+
+**With venv:**
+```bash
+source venv/bin/activate
+python3 nhl_inky_display.py
+```
+
+The Inky display shows:
+- **800x480 full-color display** optimized for Spectra 6
+- **All today's NHL games** (up to 8 games)
+- **Philadelphia Flyers games** highlighted in RED with >>> markers
+- **Next 3 upcoming Flyers games** in a separate section
+- **Color coding**:
+  - Red: Flyers games
+  - Green: Live games
+  - Orange: Scheduled games
+  - Black: Final games
+- **Auto-updates every 2 minutes**
+
+**Single update mode (for testing):**
+```bash
+uv run python nhl_inky_display.py --once
+```
+
+**Hardware Requirements:**
+- Pimoroni Inky Impression 7.3" (800x480, Spectra 6)
+- Properly configured I2C and SPI interfaces
+- Run `python identify.py` from Inky examples to verify display
+
 ### Running as a Background Service
 
 To run the client as a systemd service on your Pi Zero:
+
+#### For TUI Mode
 
 1. **Create a service file:**
    ```bash
@@ -121,7 +160,7 @@ To run the client as a systemd service on your Pi Zero:
    Type=simple
    User=pi
    WorkingDirectory=/home/pi/nhl
-   ExecStart=/home/pi/.cargo/bin/uv run python /home/pi/nhl/nhl_client.py
+   ExecStart=/home/pi/.cargo/bin/uv run python /home/pi/nhl/nhl_client.py --no-tui
    Restart=always
    RestartSec=10
 
@@ -139,7 +178,52 @@ To run the client as a systemd service on your Pi Zero:
    Type=simple
    User=pi
    WorkingDirectory=/home/pi/nhl
-   ExecStart=/home/pi/nhl/venv/bin/python3 /home/pi/nhl/nhl_client.py
+   ExecStart=/home/pi/nhl/venv/bin/python3 /home/pi/nhl/nhl_client.py --no-tui
+   Restart=always
+   RestartSec=10
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+#### For Inky Display
+
+1. **Create a service file:**
+   ```bash
+   sudo nano /etc/systemd/system/nhl-inky.service
+   ```
+
+2. **Add the following content (adjust paths as needed):**
+
+   **For uv:**
+   ```ini
+   [Unit]
+   Description=NHL Inky Display
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=pi
+   WorkingDirectory=/home/pi/nhl
+   ExecStart=/home/pi/.cargo/bin/uv run python /home/pi/nhl/nhl_inky_display.py
+   Restart=always
+   RestartSec=10
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   **For venv:**
+   ```ini
+   [Unit]
+   Description=NHL Inky Display
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=pi
+   WorkingDirectory=/home/pi/nhl
+   ExecStart=/home/pi/nhl/venv/bin/python3 /home/pi/nhl/nhl_inky_display.py
    Restart=always
    RestartSec=10
 
