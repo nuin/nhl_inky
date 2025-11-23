@@ -1,13 +1,22 @@
 # NHL Scores and Schedule Client
 
-A lightweight Python client that fetches NHL scores and schedules, updating every 2 minutes. Designed to run on Raspberry Pi Zero with Python 3.7+.
+A lightweight Python client that fetches NHL scores and schedules with a beautiful TUI (Text User Interface), updating every 2 minutes. Designed to run on Raspberry Pi Zero with Python 3.7+.
 
 ## Features
 
+- **Interactive TUI** with color-coded games and live updates
+- **Philadelphia Flyers Highlighting** - Flyers games shown in bold magenta with >>> markers
+- **Upcoming Flyers Schedule** - Shows next 5 Flyers games at the bottom
 - Fetches current NHL scores and schedules
 - Auto-updates every 2 minutes
 - Displays game status (scheduled, live, or final)
 - Shows live game period and time remaining
+- Mountain Time zone conversion for all game times
+- Color-coded game states:
+  - **Green/Bold**: Live games
+  - **Yellow**: Scheduled games
+  - **White**: Final games
+  - **Magenta/Bold/Reverse**: Philadelphia Flyers games
 - Lightweight with minimal dependencies
 - Compatible with Raspberry Pi Zero
 
@@ -56,9 +65,9 @@ A lightweight Python client that fetches NHL scores and schedules, updating ever
 
 ## Usage
 
-### Basic Usage
+### TUI Mode (Default - Recommended)
 
-Run the client to start monitoring NHL scores:
+Run the client with the interactive TUI:
 
 **With uv:**
 ```bash
@@ -69,6 +78,21 @@ uv run python nhl_client.py
 ```bash
 source venv/bin/activate
 python3 nhl_client.py
+```
+
+The TUI will display:
+- **Top section**: All today's NHL games with color-coded status
+- **Flyers games**: Highlighted in magenta with >>> markers
+- **Bottom section**: Next 5 upcoming Philadelphia Flyers games
+- **Live countdown**: Shows seconds until next update
+- **Press 'q' to quit**
+
+### Simple Print Mode
+
+For systems without curses support or if you prefer scrolling output:
+
+```bash
+uv run python nhl_client.py --no-tui
 ```
 
 The client will:

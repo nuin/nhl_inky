@@ -7,8 +7,9 @@ Compatible with Raspberry Pi Zero (Python 3.7+)
 
 import time
 import json
+import curses
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import requests
 try:
     from zoneinfo import ZoneInfo
@@ -23,15 +24,18 @@ class NHLClient:
     """Client for fetching NHL scores and schedules."""
 
     BASE_URL = "https://api-web.nhle.com/v1"
+    FLYERS_ABBREV = "PHI"  # Philadelphia Flyers team abbreviation
 
-    def __init__(self, timeout: int = 10):
+    def __init__(self, timeout: int = 10, favorite_team: str = "PHI"):
         """
         Initialize NHL Client.
 
         Args:
             timeout: Request timeout in seconds
+            favorite_team: Team abbreviation to highlight (default: PHI for Flyers)
         """
         self.timeout = timeout
+        self.favorite_team = favorite_team
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'NHL-Score-Client/1.0'
@@ -108,6 +112,89 @@ class NHLClient:
             return mt_dt.strftime("%I:%M %p MT").lstrip('0')
         except Exception as e:
             return utc_time_str
+
+    def is_favorite_team_game(self, game: Dict) -> bool:
+        """
+        Check if game involves the favorite team.
+
+        Args:
+            game: Game data dictionary
+
+        Returns:
+            True if favorite team is playing
+        """
+        away_team = game.get('awayTeam', {}).get('abbrev', '')
+        home_team = game.get('homeTeam', {}).get('abbrev', '')
+        return away_team == self.favorite_team or home_team == self.favorite_team
+
+    def get_team_schedule(self, team_abbrev: str, start_date: Optional[str] = None,
+                          end_date: Optional[str] = None, limit: int = 10) -> List[Dict]:
+        """
+        Get upcoming games for a specific team.
+
+        Args:
+            team_abbrev: Team abbreviation (e.g., 'PHI')
+            start_date: Start date in YYYY-MM-DD format (default: today)
+            end_date: End date in YYYY-MM-DD format (default: 30 days from start)
+            limit: Maximum number of games to return
+
+        Returns:
+            List of upcoming games
+        """
+        from datetime import timedelta
+
+        if start_date is None:
+            start_dt = datetime.now()
+            start_date = start_dt.strftime("%Y-%m-%d")
+        else:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+
+        if end_date is None:
+            end_dt = start_dt + timedelta(days=30)
+            end_date = end_dt.strftime("%Y-%m-%d")
+
+        # Get games for the date range
+        upcoming_games = []
+        current_dt = start_dt
+
+        while current_dt.strftime("%Y-%m-%d") <= end_date and len(upcoming_games) < limit:
+            date_str = current_dt.strftime("%Y-%m-%d")
+            scoreboard = self.get_scoreboard(date_str)
+
+            if scoreboard and 'games' in scoreboard:
+                for game in scoreboard.get('games', []):
+                    if self.is_favorite_team_game(game):
+                        # Only include future or live games
+                        game_state = game.get('gameState', '')
+                        if game_state not in ['OFF', 'FINAL']:
+                            upcoming_games.append(game)
+                            if len(upcoming_games) >= limit:
+                                break
+
+            current_dt += timedelta(days=1)
+
+        return upcoming_games
+
+    def get_game_state_info(self, game: Dict) -> Tuple[str, str]:
+        """
+        Get game state and color for display.
+
+        Args:
+            game: Game data dictionary
+
+        Returns:
+            Tuple of (state_name, color_name)
+        """
+        game_state = game.get('gameState', 'Unknown')
+
+        if game_state in ['OFF', 'FINAL']:
+            return ('FINAL', 'final')
+        elif game_state in ['FUT', 'PRE']:
+            return ('SCHEDULED', 'scheduled')
+        elif game_state in ['LIVE', 'CRIT']:
+            return ('LIVE', 'live')
+        else:
+            return (game_state, 'default')
 
     def format_game_info(self, game: Dict) -> str:
         """
@@ -199,11 +286,164 @@ class NHLClient:
             print("\n\nStopping NHL Score Client...")
             print("Goodbye!")
 
+    def run_tui(self, stdscr, interval: int = 120) -> None:
+        """
+        Run TUI with refreshing display.
+
+        Args:
+            stdscr: curses screen object
+            interval: Update interval in seconds (default: 120 = 2 minutes)
+        """
+        # Initialize colors
+        curses.start_color()
+        curses.use_default_colors()
+
+        # Define color pairs
+        curses.init_pair(1, curses.COLOR_GREEN, -1)   # Live games
+        curses.init_pair(2, curses.COLOR_YELLOW, -1)  # Scheduled games
+        curses.init_pair(3, curses.COLOR_WHITE, -1)   # Final games
+        curses.init_pair(4, curses.COLOR_CYAN, -1)    # Header
+        curses.init_pair(5, curses.COLOR_RED, -1)     # Error
+        curses.init_pair(6, curses.COLOR_MAGENTA, -1) # Flyers highlight
+
+        COLOR_LIVE = curses.color_pair(1) | curses.A_BOLD
+        COLOR_SCHEDULED = curses.color_pair(2)
+        COLOR_FINAL = curses.color_pair(3)
+        COLOR_HEADER = curses.color_pair(4) | curses.A_BOLD
+        COLOR_ERROR = curses.color_pair(5)
+        COLOR_FLYERS = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
+
+        # Hide cursor
+        curses.curs_set(0)
+
+        # Set nodelay for non-blocking input
+        stdscr.nodelay(True)
+
+        last_update = 0
+
+        while True:
+            current_time = time.time()
+
+            # Check for 'q' key to quit
+            try:
+                key = stdscr.getch()
+                if key == ord('q') or key == ord('Q'):
+                    break
+            except:
+                pass
+
+            # Update display if interval has passed
+            if current_time - last_update >= interval or last_update == 0:
+                stdscr.clear()
+                height, width = stdscr.getmaxyx()
+
+                # Draw header
+                title = "NHL SCORES & SCHEDULE"
+                now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S MT')
+                next_update = interval - int(current_time - last_update) if last_update > 0 else interval
+
+                stdscr.addstr(0, (width - len(title)) // 2, title, COLOR_HEADER)
+                stdscr.addstr(1, 0, "=" * width, COLOR_HEADER)
+                stdscr.addstr(2, 2, f"Last Update: {now_str}", COLOR_HEADER)
+                stdscr.addstr(2, width - 30, f"Next update in: {next_update}s", COLOR_HEADER)
+                stdscr.addstr(3, 2, "Press 'q' to quit", curses.color_pair(2))
+                stdscr.addstr(4, 0, "=" * width, COLOR_HEADER)
+
+                # Fetch and display games
+                scoreboard = self.get_scoreboard()
+
+                if not scoreboard or 'games' not in scoreboard:
+                    stdscr.addstr(6, 2, "No games found for today.", COLOR_ERROR)
+                else:
+                    games = scoreboard.get('games', [])
+
+                    if not games:
+                        stdscr.addstr(6, 2, "No games scheduled for today.", COLOR_SCHEDULED)
+                    else:
+                        row = 6
+                        for game in games:
+                            if row >= height - 12:  # Leave room for Flyers section
+                                break
+
+                            state, color_name = self.get_game_state_info(game)
+                            is_flyers = self.is_favorite_team_game(game)
+
+                            # Select color based on game state and Flyers involvement
+                            if is_flyers:
+                                color = COLOR_FLYERS
+                            elif color_name == 'live':
+                                color = COLOR_LIVE
+                            elif color_name == 'scheduled':
+                                color = COLOR_SCHEDULED
+                            elif color_name == 'final':
+                                color = COLOR_FINAL
+                            else:
+                                color = curses.color_pair(0)
+
+                            game_info = self.format_game_info(game)
+
+                            # Add state indicator and Flyers marker
+                            marker = ">>> " if is_flyers else "    "
+                            state_str = f"{marker}[{state:>9}] "
+                            stdscr.addstr(row, 2, state_str, color)
+                            stdscr.addstr(row, 2 + len(state_str), game_info, color if is_flyers else curses.color_pair(0))
+
+                            row += 1
+
+                        # Add Flyers upcoming schedule section
+                        row += 1
+                        if row < height - 8:
+                            stdscr.addstr(row, 0, "=" * width, COLOR_HEADER)
+                            row += 1
+                            flyers_title = f"{self.favorite_team} UPCOMING GAMES"
+                            stdscr.addstr(row, (width - len(flyers_title)) // 2, flyers_title, COLOR_HEADER)
+                            row += 1
+                            stdscr.addstr(row, 0, "=" * width, COLOR_HEADER)
+                            row += 1
+
+                            # Get upcoming Flyers games
+                            upcoming = self.get_team_schedule(self.favorite_team, limit=5)
+
+                            if not upcoming:
+                                stdscr.addstr(row, 2, "No upcoming games in next 30 days", COLOR_SCHEDULED)
+                            else:
+                                for flyers_game in upcoming[:min(5, height - row - 2)]:
+                                    game_date = flyers_game.get('gameDate', '')
+                                    game_info = self.format_game_info(flyers_game)
+
+                                    # Format: Date - Game Info
+                                    display_str = f"{game_date}  {game_info}"
+                                    stdscr.addstr(row, 2, display_str, curses.color_pair(6))
+                                    row += 1
+
+                # Draw footer
+                footer = "Powered by NHL API | Updates every 2 minutes"
+                stdscr.addstr(height - 1, (width - len(footer)) // 2, footer, curses.color_pair(2))
+
+                stdscr.refresh()
+                last_update = current_time
+
+            # Sleep briefly to reduce CPU usage
+            time.sleep(0.1)
+
 
 def main():
     """Main entry point."""
+    import sys
+
+    # Check if --no-tui flag is provided
+    use_tui = '--no-tui' not in sys.argv
+
     client = NHLClient()
-    client.run_continuous(interval=10)  # Update every 2 minutes
+
+    if use_tui:
+        try:
+            curses.wrapper(client.run_tui, 10)  # Update every 2 minutes
+        except KeyboardInterrupt:
+            print("\n\nStopping NHL Score Client...")
+    else:
+        # Fall back to simple print mode
+        client.run_continuous(interval=120)
 
 
 if __name__ == "__main__":
