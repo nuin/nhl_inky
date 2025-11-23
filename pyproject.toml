@@ -1,0 +1,10 @@
+[project]
+name = "nhl"
+version = "0.1.0"
+description = "NHL Scores and Schedule Client for Raspberry Pi Zero"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    "requests>=2.25.0",
+    "pytz>=2021.1; python_version < '3.9'",
+]
