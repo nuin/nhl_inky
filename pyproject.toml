@@ -6,12 +6,5 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "requests>=2.25.0",
+    "inky>=2.2.1",
 ]
-
-[project.optional-dependencies]
-rpi = [
-    "inky==2.2.1",
-]
-
-[tool.uv]
-exclude-newer = "2024-12-01T00:00:00Z"
