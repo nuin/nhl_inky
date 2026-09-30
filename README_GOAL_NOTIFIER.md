@@ -1,11 +1,11 @@
 # NHL Flyers Goal Notifier
 
-Automatically sends SMS notifications via email-to-SMS gateway when the Philadelphia Flyers score a goal.
+Automatically sends a push notification (or an SMS via an email-to-SMS gateway) when the Philadelphia Flyers score a goal. Delivery goes through [Apprise](https://github.com/caronc/apprise), so any service it supports works: [ntfy](https://ntfy.sh) push, email, Telegram, Pushover, and so on.
 
 ## Features
 
 - 🚨 Real-time goal notifications with scorer and assists
-- 📱 SMS delivery via Telus email-to-SMS gateway
+- 📱 Delivery to any Apprise destination: ntfy push (no account or SMTP credentials needed), or the Telus email-to-SMS gateway
 - ⏱️ Period and time information
 - 📊 Current score included
 - 🔄 Checks every 30 seconds during live games
@@ -18,18 +18,19 @@ Automatically sends SMS notifications via email-to-SMS gateway when the Philadel
 ```bash
 cd ~/nhl_inky
 source venv/bin/activate
-pip install python-dotenv
+pip install -r requirements.txt   # includes python-dotenv and apprise
 ```
 
-### 2. Configure SMTP Settings
+### 2. Configure Where Alerts Go
 
-The `.env` file is already configured with your Gmail SMTP settings from the woodpecker-detector project.
-
-If you need to change settings, edit `.env`:
+Copy the example and set `NOTIFY_URLS`:
 
 ```bash
+cp .env.example .env
 nano .env
 ```
+
+For ntfy, pick a long random topic (anyone who knows it can read it), install the ntfy app on your phone and subscribe to that topic.
 
 ### 3. Run the Notifier
 
@@ -58,23 +59,26 @@ pkill -f goal_notifier.py
 
 ## Configuration
 
-Edit `.env` to customize:
+Edit `.env` (never commit it; it is git-ignored):
 
 ```env
-# Phone number to receive SMS
-PHONE_NUMBER=5877852690
+# One or more Apprise URLs, separated by commas or spaces
+NOTIFY_URLS=ntfy://ntfy.sh/your-random-topic
 
-# SMTP server settings (Gmail configured)
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=paulo.nuin@gmail.com
-SMTP_PASSWORD=hlapqqpwrjonvfhi
+# Legacy email-to-SMS: used only when NOTIFY_URLS is empty
+# PHONE_NUMBER=5550000000
+# SMTP_SERVER=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USERNAME=your.email@gmail.com
+# SMTP_PASSWORD=your_app_password_here
 
 # How often to check for new goals (in seconds)
 CHECK_INTERVAL=30
 ```
 
-## SMS Message Format
+An existing `.env` with only the `SMTP_*` and `PHONE_NUMBER` settings keeps working: those are turned into an Apprise `mailtos://` URL that emails `<PHONE_NUMBER>@msg.telus.com`, exactly as before.
+
+## Message Format
 
 When the Flyers score, you'll receive a message like:
 
@@ -88,7 +92,7 @@ P2 12:34 | PHI 2-1 NYR
 1. **Monitors Live Games**: Checks the NHL API every 30 seconds for active Flyers games
 2. **Detects Goals**: Polls the play-by-play endpoint for new goal events
 3. **Gets Details**: Fetches scorer and assist information from the game roster
-4. **Sends SMS**: Uses email-to-SMS gateway (number@msg.telus.com) via Gmail SMTP
+4. **Sends Alert**: Pushes the message to every `NOTIFY_URLS` destination via Apprise (or to the Telus email-to-SMS gateway with the legacy SMTP settings)
 5. **Tracks Notifications**: Remembers sent goals to avoid duplicate messages
 
 ## API Endpoints Used
@@ -99,16 +103,17 @@ P2 12:34 | PHI 2-1 NYR
 
 ## Troubleshooting
 
-### No SMS received
+### No notification received
 
 1. Check the log output for errors
-2. Verify SMTP credentials are correct
+2. Verify `NOTIFY_URLS` (or the legacy SMTP credentials) are correct
 3. Test with a manual send:
    ```python
    from goal_notifier import GoalNotifier
-   notifier = GoalNotifier("5877852690")
-   notifier.send_sms("Test message from goal notifier")
+   notifier = GoalNotifier()   # reads NOTIFY_URLS from .env
+   notifier.send_notification("Test message from goal notifier")
    ```
+4. Or test the URL directly with the Apprise CLI: `apprise -b "test" "ntfy://ntfy.sh/your-random-topic"`
 
 ### "No active Flyers games" message
 
